@@ -1,0 +1,163 @@
+﻿@model Finec.ViewModels.ExpensesIndexViewModel
+@using Finec.Models
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Expense Planning";
+    var currentYear = Model.StartDate.Year;
+    var culture = new CultureInfo("ms-MY");
+}
+
+<style>
+    .budget-table-wrapper {
+        border: 1px solid #dee2e6;
+        border-radius: .75rem;
+        overflow: hidden;
+    }
+
+    .table-budget {
+        margin-bottom: 0;
+    }
+
+        .table-budget thead th {
+            border-bottom-width: 1px;
+            font-weight: 500;
+            color: #6c757d;
+            padding: 0.75rem;
+            background-color: #FEF2F2;
+        }
+
+        .table-budget tbody td, .table-budget tfoot td {
+            vertical-align: middle;
+            border-top: 1px solid #dee2e6;
+        }
+
+            .table-budget tbody td:first-child {
+                font-weight: 600;
+            }
+
+        .table-budget tfoot td {
+            font-weight: 700;
+            color: #1F2937;
+            background-color: #FEE2E2;
+        }
+
+        .table-budget input[type="number"].form-control-sm {
+            background-color: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+            .table-budget input[type="number"].form-control-sm:focus {
+                background-color: #e9ecef;
+            }
+</style>
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 d-inline-block align-middle me-3">@ViewData["Title"]</h1>
+        <div class="d-inline-block align-middle">
+            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#addExpenseModal">+ Add Expense</button>
+        </div>
+    </div>
+    <div class="d-flex align-items-center">
+        <a asp-action="Index" asp-route-year="@(currentYear - 1)" class="btn btn-sm btn-light me-2"><i class="fas fa-chevron-left"></i></a>
+        <span class="fw-bold fs-5">@currentYear</span>
+        <a asp-action="Index" asp-route-year="@(currentYear + 1)" class="btn btn-sm btn-light ms-2"><i class="fas fa-chevron-right"></i></a>
+    </div>
+</div>
+
+<!-- Expense Categories Table -->
+<h4 class="mt-4">Expense Categories</h4>
+<div class="budget-table-wrapper">
+    <table class="table table-budget">
+        <thead>
+            <tr>
+                <th>Category</th>
+                @for (int i = 1; i <= 12; i++)
+                {
+                    <th class="text-end">@CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(i)</th>
+                }
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var category in Model.ExpenseCategories)
+            {
+                <tr>
+                    <td class="d-flex justify-content-between align-items-center">
+                        <div>
+                            @category.CategoryName
+                            <small class="d-block text-muted fw-normal">@category.AccountName</small>
+                        </div>
+                        <form asp-action="DeleteCategory" method="post" onsubmit="return confirm('Are you sure? This will delete the category and all its transactions for the year.');">
+                            <input type="hidden" name="categoryName" value="@category.CategoryName" />
+                            <input type="hidden" name="year" value="@currentYear" />
+                            <input type="hidden" name="accountId" value="@category.AccountId" />
+                            <button type="submit" class="btn btn-sm btn-link text-danger p-0" title="Delete Category"><i class="fas fa-trash-alt fa-xs"></i></button>
+                        </form>
+                    </td>
+                    <td colspan="13">
+                        <form asp-action="UpdateBudgetRow" method="post" class="d-contents">
+                            <input type="hidden" name="categoryName" value="@category.CategoryName" />
+                            <input type="hidden" name="year" value="@currentYear" />
+                            <input type="hidden" name="accountId" value="@category.AccountId" />
+                            <table class="w-100">
+                                <tr>
+                                    @for (int i = 1; i <= 12; i++)
+                                    {
+                                        var amount = category.MonthlyAmounts.ContainsKey(i) ? category.MonthlyAmounts[i] : 0;
+                                        <td class="p-1" style="min-width: 100px;"><input type="number" step="0.01" name="monthlyAmounts[@i]" value="@amount" class="form-control form-control-sm text-end" placeholder="RM0" /></td>
+                                    }
+                                    <td class="text-center" style="min-width: 60px;"><button type="submit" class="btn btn-sm btn-link p-1">Save</button></td>
+                                </tr>
+                            </table>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td>Total</td>
+                @for (int i = 1; i <= 12; i++)
+                {
+                    <td class="text-end px-3">@Model.MonthlyExpenseTotals[i].ToString("C0", culture)</td>
+                }
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<!-- Add Expense Modal -->
+<div class="modal fade" id="addExpenseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="AddCategory" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Expense Category</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="year" value="@currentYear" />
+                    <div class="mb-3">
+                        <label for="accountId" class="form-label">Account</label>
+                        <select name="accountId" class="form-select" asp-items="ViewBag.AccountsList" required>
+                            <option value="">-- From which account? --</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="categoryName" class="form-label">Category Name</label>
+                        <input type="text" name="categoryName" class="form-control" placeholder="e.g., Groceries, Transport" required />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,221 @@
+﻿@model Finec.ViewModels.AssetsIndexViewModel
+@using System.Globalization
+@using System.Text.Json
+
+@{
+    ViewData["Title"] = "Assets Tracker";
+    var culture = new CultureInfo("ms-MY");
+
+    // Data for the doughnut chart - NOW it only includes true assets, not cash.
+    var assetAllocations = Model.AssetAllocations.Where(a => a.AssetType != "Cash & Deposits").ToList();
+    var doughnutLabels = JsonSerializer.Serialize(assetAllocations.Select(a => a.AssetType));
+    var doughnutData = JsonSerializer.Serialize(assetAllocations.Select(a => a.Value));
+}
+
+<!-- Page Header (No change) -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">@ViewData["Title"]</h1>
+    <a asp-action="Create" class="btn btn-primary" style="background-color: #10B981; border-color: #10B981;">
+        <i class="fas fa-plus"></i> Add Asset
+    </a>
+</div>
+
+<!-- Top Row with Flexbox for Equal Height -->
+<div class="row d-flex align-items-stretch">
+    <!-- Left Column: Net Worth Chart -->
+    <div class="col-lg-8 mb-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title text-muted">Net worth</h5>
+                <p class="h2 fw-bold d-inline-block me-2">@Model.NetWorth.ToString("C", culture)</p>
+                <span class="text-success fw-bold">
+                    +@Model.NetWorthChangeAbsolute.ToString("C", culture) (@Model.NetWorthChangePercentage.ToString("P2"))
+                </span>
+                <div style="position: relative; flex-grow: 1;" class="mt-3">
+                    <canvas id="netWorthChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Summary Cards -->
+    <div class="col-lg-4 mb-4 d-flex flex-column">
+        <div class="card mb-4 flex-fill">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted">Net Worth</h6>
+                <p class="h3 card-text fw-bold">@Model.NetWorth.ToString("C", culture)</p>
+            </div>
+        </div>
+        <div class="card mb-4 flex-fill">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted">Total Asset Balance</h6>
+                <p class="h4 card-text fw-bold">@Model.TotalAssetBalance.ToString("C", culture)</p>
+            </div>
+        </div>
+        <div class="card flex-fill">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted">Total Account Balance</h6>
+                <p class="h4 card-text fw-bold">@Model.TotalAccountBalance.ToString("C", culture)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RE-ARCHITECTED Bottom Row -->
+<div class="row mt-2">
+    <!-- Left Card: Asset Allocation -->
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-4">Asset Allocation</h5>
+                @if (assetAllocations.Any())
+                {
+                    <div class="row align-items-center">
+                        <div class="col-md-5">
+                            <div style="position: relative; height: 220px; max-width: 220px; margin: auto;">
+                                <canvas id="allocationChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <ul class="list-group list-group-flush">
+                                @foreach (var allocation in assetAllocations)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center ps-0">
+                                        @allocation.AssetType
+                                        <span class="fw-bold">@allocation.Value.ToString("C", culture)</span>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center p-4 text-muted">No invested assets to display.</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Card: Account Balances -->
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Account Balances</h5>
+                    <a asp-controller="Accounts" asp-action="Index" class="btn btn-sm btn-outline-primary">Manage</a>
+                </div>
+                <ul class="list-group list-group-flush">
+                    @foreach (var account in Model.Accounts)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            @account.AccountName
+                            <span class="fw-bold">@account.CurrentBalance.ToString("C", culture)</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- The JavaScript section remains largely the same, just ensure it uses the 'assetAllocations' variable -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // 1. Initialize Net Worth Line Chart
+            const netWorthCtx = document.getElementById('netWorthChart').getContext('2d');
+            const netWorthLabels = @Html.Raw(Json.Serialize(Model.NetWorthChartLabels));
+            const netWorthData = @Html.Raw(Json.Serialize(Model.NetWorthChartData));
+
+            new Chart(netWorthCtx, {
+                type: 'line',
+                data: {
+                    labels: netWorthLabels,
+                    datasets: [{
+                        label: 'Net Worth',
+                        data: netWorthData,
+                        borderColor: '#10B981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: { 
+                        y: { 
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+                                }
+                            }
+                        } 
+                    },
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 2. Initialize Asset Allocation Doughnut Chart
+            const allocationCtx = document.getElementById('allocationChart').getContext('2d');
+            const doughnutLabels = @Html.Raw(doughnutLabels);
+            const doughnutData = @Html.Raw(doughnutData);
+
+            new Chart(allocationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: doughnutLabels,
+                    datasets: [{
+                        label: 'Asset Allocation',
+                        data: doughnutData,
+                        backgroundColor: ['#6366F1', '#34D399', '#F59E0B', '#A78BFA', '#22D3EE'],
+                        borderWidth: 0,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                           display: false // We use our custom list as the legend
+                        },
+                        tooltip: {
+                             callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(context.parsed);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+}

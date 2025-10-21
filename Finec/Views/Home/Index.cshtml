@@ -1,0 +1,174 @@
+﻿@model Finec.ViewModels.DashboardViewModel
+@using System.Globalization
+@using System.Text.Json
+
+@{
+    ViewData["Title"] = "Dashboard";
+    var selectedDate = (DateTime)ViewBag.SelectedDate;
+    var culture = new CultureInfo("ms-MY");
+
+    var doughnutLabels = JsonSerializer.Serialize(Model.IncomeBreakdown.Select(i => i.SourceName));
+    var doughnutData = JsonSerializer.Serialize(Model.IncomeBreakdown.Select(i => i.Amount));
+
+    string GetPercentageClass(double percentage, bool isExpense = false)
+    {
+        if (percentage > 0) return isExpense ? "text-danger" : "text-success";
+        if (percentage < 0) return isExpense ? "text-success" : "text-danger";
+        return "text-muted";
+    }
+}
+
+<!-- Page Header with Month/Year Navigation -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3">Money Management Dashboard</h1>
+        <p class="text-muted mb-0">Hello @User.Claims.FirstOrDefault(c => c.Type == "FirstName")?.Value, welcome back!</p>
+    </div>
+    <div class="d-flex align-items-center">
+        <!-- Reconcile/Sync Button can be added here if you implemented it -->
+        <a asp-action="Index" asp-route-year="@selectedDate.AddMonths(-1).Year" asp-route-month="@selectedDate.AddMonths(-1).Month" class="btn btn-sm btn-light me-2"><i class="fas fa-chevron-left"></i></a>
+        <span class="fw-bold fs-5">@selectedDate.ToString("MMMM yyyy")</span>
+        <a asp-action="Index" asp-route-year="@selectedDate.AddMonths(1).Year" asp-route-month="@selectedDate.AddMonths(1).Month" class="btn btn-sm btn-light ms-2"><i class="fas fa-chevron-right"></i></a>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Left Column: Main Income Card -->
+    <div class="col-lg-8 mb-4">
+        <div id="incomeCard" class="card h-100 metric-card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="flex-shrink-0 bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 0.8rem;">
+                                <i class="fas fa-arrow-down"></i>
+                            </div>
+                            <h5 class="ms-2 mb-0">Income</h5>
+                        </div>
+                        <h2 class="display-5 fw-bold">@Model.TotalIncome.ToString("C", culture)</h2>
+                        <div class="mt-2">
+                            <span class="fw-bold @GetPercentageClass(Model.IncomeChangePercentage)">
+                                @if (Model.IncomeChangeMessage.StartsWith("vs."))
+                                {
+                                    <i class="fas @(Model.IncomeChangePercentage > 0 ? "fa-caret-up" : "fa-caret-down")"></i>
+                                }
+                                @Model.IncomeChangePercentage.ToString("P1")
+                            </span>
+                            <span class="text-muted"> @Model.IncomeChangeMessage</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-center justify-content-center">
+                        <div style="position: relative; height: 180px; width: 180px;">
+                            <canvas id="incomeDoughnutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Saving & Spending Cards -->
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100 d-flex flex-column">
+            <div id="savingCard" class="card-body flex-fill metric-card">
+                <h6 class="text-muted">Total Saving</h6>
+                <h3 class="fw-bold">@Model.TotalSaving.ToString("C", culture)</h3>
+                <span class="small @GetPercentageClass(Model.SavingChangePercentage)">
+                    @Model.SavingChangePercentage.ToString("P1") @Model.SavingChangeMessage
+                </span>
+            </div>
+            <hr class="my-0" />
+            <div id="spendingCard" class="card-body flex-fill metric-card">
+                <h6 class="text-muted">Total Spending</h6>
+                <h3 class="fw-bold">@Model.TotalSpending.ToString("C", culture)</h3>
+                <span class="small @GetPercentageClass(Model.SpendingChangePercentage, isExpense: true)">
+                    @Model.SpendingChangePercentage.ToString("P1") @Model.SpendingChangeMessage
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Account Balance Card -->
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Account Balance</h5>
+                    <a asp-controller="Accounts" asp-action="Create" class="btn btn-sm btn-outline-primary">+ Add</a>
+                </div>
+                <ul class="list-group list-group-flush">
+                    @foreach (var account in Model.Accounts)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            @account.AccountName
+                            <span class="fw-bold">@account.CurrentBalance.ToString("C", culture)</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Activity Chart -->
+    <div class="col-lg-8 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 id="chartTitle" class="card-title">Expense Activity</h5>
+                <div style="position: relative; height: 250px;">
+                    <canvas id="mainActivityChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Data for interactive chart
+            const labels = @Html.Raw(Json.Serialize(Model.ChartLabels));
+            const incomeData = { label: 'Daily Income', data: @Html.Raw(Json.Serialize(Model.IncomeChartData)), borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', title: 'Income Activity' };
+            const expenseData = { label: 'Daily Expenses', data: @Html.Raw(Json.Serialize(Model.ExpenseChartData)), borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', title: 'Expense Activity' };
+            const savingData = { label: 'Daily Savings', data: @Html.Raw(Json.Serialize(Model.SavingChartData)), borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.1)', title: 'Saving Activity' };
+
+            // Chart Initialization
+            const ctx = document.getElementById('mainActivityChart').getContext('2d');
+            const mainChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ ...expenseData, fill: true, tension: 0.4 }] },
+                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+            });
+
+            const chartTitle = document.getElementById('chartTitle');
+            function updateChart(dataObject) {
+                mainChart.data.datasets[0].label = dataObject.label;
+                mainChart.data.datasets[0].data = dataObject.data;
+                mainChart.data.datasets[0].borderColor = dataObject.borderColor;
+                mainChart.data.datasets[0].backgroundColor = dataObject.backgroundColor;
+                chartTitle.textContent = dataObject.title;
+                mainChart.update();
+            }
+
+            document.getElementById('incomeCard').addEventListener('click', () => updateChart(incomeData));
+            document.getElementById('spendingCard').addEventListener('click', () => updateChart(expenseData));
+            document.getElementById('savingCard').addEventListener('click', () => updateChart(savingData));
+
+            const incomeDoughnutCtx = document.getElementById('incomeDoughnutChart').getContext('2d');
+            new Chart(incomeDoughnutCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: @Html.Raw(doughnutLabels),
+                    datasets: [{
+                        data: @Html.Raw(doughnutData),
+                        backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } } } }
+            });
+        });
+    </script>
+}

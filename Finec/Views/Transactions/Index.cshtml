@@ -1,0 +1,95 @@
+﻿@model IEnumerable<Finec.Models.Transaction>
+@using Finec.Models
+
+@{
+    ViewData["Title"] = "All Transactions";
+
+    // This function is now robust. It can never fail.
+    string GetBadgeClass(TransactionType type) => type switch
+    {
+        TransactionType.Income => "bg-success",
+        TransactionType.Expense => "bg-danger",
+        TransactionType.Saving => "bg-primary",
+        TransactionType.Transfer => "bg-info text-dark",
+        TransactionType.AssetPurchase => "bg-warning text-dark",
+        // THE CRITICAL FIX: The underscore is a "catch-all" or "default" case.
+        // If it sees a type it doesn't recognize, it will gracefully fall back to grey.
+        _ => "bg-secondary"
+    };
+}
+
+<!-- Page Header with Filters -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3">@ViewData["Title"]</h1>
+        <p class="text-muted mb-0">View, filter, edit, and delete all your transactions.</p>
+    </div>
+
+    <!-- Filter Form -->
+    <form asp-action="Index" method="get" class="d-flex align-items-center">
+        <select name="typeFilter" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+            <option value="">All Types</option>
+            @foreach (var type in Enum.GetValues(typeof(TransactionType))) // to be find 
+            {
+                <option value="@type.ToString()" selected="@(ViewBag.TypeFilter == type.ToString())">@type.ToString()</option>
+            }
+        </select>
+
+        <input type="month" name="monthFilter" class="form-control form-control-sm" value="@ViewBag.MonthFilter" onchange="this.form.submit()" />
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        @if (Model.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <!-- ... thead remains the same ... -->
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Account</th>
+                            <th>Description</th>
+                            <th class="text-end">Amount</th>
+                            <th></th> <!-- Actions column -->
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model)
+                        {
+                            <tr>
+                                <!-- ... existing columns ... -->
+                                <td>@item.TransactionDate.ToString("dd MMM yyyy")</td>
+                                <td><span class="badge @GetBadgeClass(item.Type)">@item.Type</span></td>
+                                <td>@item.Account.AccountName</td>
+                                <td>@item.Description</td>
+                                <td class="text-end fw-bold">@item.Amount.ToString("C", new System.Globalization.CultureInfo("ms-MY"))</td>
+                                <!-- THE NEW ACTIONS DROPDOWN -->
+                                <td class="text-end">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary border-0" type="button" data-bs-toggle="dropdown">
+                                            <i class="fas fa-ellipsis-h"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" asp-action="Edit" asp-route-id="@item.Id">Edit</a></li>
+                                            <li><a class="dropdown-item text-danger" asp-action="Delete" asp-route-id="@item.Id">Delete</a></li>
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="text-center p-4">
+                <p class="mb-0">No transactions match your filters.</p>
+                <a asp-action="Index">Clear filters</a>
+            </div>
+        }
+    </div>
+</div>
